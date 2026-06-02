@@ -1,0 +1,23 @@
+name: web_discovery
+version: "1.0"
+description: "Web directory and file discovery via gobuster"
+technique_id: T1595
+phase_applicable: [recon, enumeration]
+triggers:
+  - observation_type: port_open
+    field_match:
+      service: http
+  - observation_type: port_open
+    field_match:
+      port: 80
+  - observation_type: port_open
+    field_match:
+      port: 443
+  - observation_type: port_open
+    field_match:
+      port: 8080
+tools_required: [gobuster]
+actions:
+  - tool: gobuster
+    args_template: ["dir", "-u", "http://{target}:{port}", "-w", "/usr/share/wordlists/dirb/common.txt", "-t", "20"]
+    description: "Directory brute-force with common wordlist"

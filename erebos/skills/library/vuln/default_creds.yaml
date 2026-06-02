@@ -1,0 +1,13 @@
+name: default_creds
+version: "1.0"
+description: "Default credential testing against common services"
+technique_id: T1078
+phase_applicable: [enumeration, exploitation]
+triggers:
+  - observation_type: service_detected
+    field_match: {}
+tools_required: [hydra]
+actions:
+  - tool: hydra
+    args_template: ["-L", "/usr/share/wordlists/default-users.txt", "-P", "/usr/share/wordlists/default-passwords.txt", "{target}", "{service}"]
+    description: "Test default credentials on detected service"

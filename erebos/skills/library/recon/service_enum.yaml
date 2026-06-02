@@ -1,0 +1,13 @@
+name: service_enum
+version: "1.0"
+description: "Service version detection and enumeration"
+technique_id: T1046
+phase_applicable: [recon, enumeration]
+triggers:
+  - observation_type: port_open
+    field_match: {}
+tools_required: [nmap]
+actions:
+  - tool: nmap
+    args_template: ["-sV", "-sC", "-p", "{port}", "{target}"]
+    description: "Detailed service version detection on specific port"

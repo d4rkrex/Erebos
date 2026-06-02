@@ -1,0 +1,1 @@
+"""Erebos TUI Dashboard."""

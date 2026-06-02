@@ -1,0 +1,55 @@
+effectiveness_map:
+  web_application:
+    nuclei: 0.95
+    gobuster: 0.90
+    ffuf: 0.90
+    sqlmap: 0.88
+    nikto: 0.85
+    xsstrike: 0.82
+    katana: 0.80
+    dirb: 0.75
+    wapiti: 0.70
+
+  network_host:
+    nmap: 0.97
+    nmap-advanced: 0.95
+    masscan: 0.92
+    rustscan: 0.90
+    amap: 0.80
+    ping: 0.60
+
+  api_endpoint:
+    nuclei: 0.90
+    ffuf: 0.88
+    sqlmap: 0.85
+    swagger-analyzer: 0.85
+    arjun: 0.80
+    soapui: 0.75
+
+  wordpress:
+    wpscan: 0.95
+    nuclei-wordpress: 0.80
+    droopescan: 0.75
+    nikto: 0.70
+    wpseku: 0.65
+
+  cloud_service:
+    cloud_enum: 0.90
+    nmap: 0.75
+    awscli-checker: 0.70
+    cloudmapper: 0.65
+
+thresholds:
+  default: 0.70
+  stealth: 0.85
+  aggressive: 0.60
+
+parameter_templates:
+  nuclei:
+    default: "-rl 50 -c 10 -timeout 10"
+    stealth: "-rl 10 -c 2 -timeout 30 -jitter"
+    aggressive: "-rl 200 -c 20 -timeout 5"
+  nmap:
+    default: "-sV -sC"
+    stealth: "-sS -T2 -Pn"
+    aggressive: "-sS -sV -sC -T5 -p-"

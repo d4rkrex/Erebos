@@ -1,0 +1,63 @@
+fallback_chains:
+  network_scanning:
+    primary: masscan
+    alternatives:
+      - rustscan
+      - nmap
+    max_retries: 3
+    retry_delay: 1.0
+    strategies:
+      PERMISSION_DENIED: FALLBACK
+      TIMEOUT: RETRY
+      NETWORK_ERROR: RETRY
+      TOOL_NOT_FOUND: FALLBACK
+      PARSE_FAILURE: FALLBACK
+      RATE_LIMIT: RETRY
+      UNKNOWN: SKIP
+
+  web_enumeration:
+    primary: gobuster
+    alternatives:
+      - ffuf
+      - dirsearch
+    max_retries: 3
+    retry_delay: 1.0
+    strategies:
+      PERMISSION_DENIED: SKIP
+      TIMEOUT: RETRY
+      NETWORK_ERROR: RETRY
+      TOOL_NOT_FOUND: FALLBACK
+      PARSE_FAILURE: FALLBACK
+      RATE_LIMIT: RETRY
+      UNKNOWN: SKIP
+
+  web_scanning:
+    primary: nikto
+    alternatives:
+      - skip
+    max_retries: 3
+    retry_delay: 1.0
+    strategies:
+      PERMISSION_DENIED: SKIP
+      TIMEOUT: RETRY
+      NETWORK_ERROR: RETRY
+      TOOL_NOT_FOUND: SKIP
+      PARSE_FAILURE: SKIP
+      RATE_LIMIT: RETRY
+      UNKNOWN: SKIP
+
+  dns_enumeration:
+    primary: nslookup
+    alternatives:
+      - dig
+      - fierce
+    max_retries: 3
+    retry_delay: 1.0
+    strategies:
+      PERMISSION_DENIED: FALLBACK
+      TIMEOUT: RETRY
+      NETWORK_ERROR: RETRY
+      TOOL_NOT_FOUND: FALLBACK
+      PARSE_FAILURE: SKIP
+      RATE_LIMIT: RETRY
+      UNKNOWN: SKIP

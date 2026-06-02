@@ -1,0 +1,46 @@
+{
+  "erebos": {
+    "command": "ssh",
+    "args": ["erebos-server", "docker", "exec", "-i", "erebos", "python", "-m", "erebos", "mcp-stdio"],
+    "description": "Erebos pentest orchestrator (remote, erebos-server) — fleet scanning, vulnerability discovery, exploitation, and reporting",
+    "tools": [
+      {
+        "name": "fleet-scan",
+        "description": "Launch a full fleet scan with parallel agents (recon, vuln-scan, exploit, code-audit, reporter)",
+        "parameters": {
+          "target": { "type": "string", "description": "Target hostname or IP (must be in allowlist)", "required": true },
+          "repos": { "type": "array", "items": { "type": "string" }, "description": "Optional repo paths for code-aware scanning" },
+          "dry_run": { "type": "boolean", "description": "Simulate without executing tools", "default": false },
+          "auth_header": { "type": "string", "description": "Auth header for authenticated scanning (e.g. 'Authorization: Bearer ey...')" },
+          "auth_cookie": { "type": "string", "description": "Cookie string for authenticated scanning (e.g. 'PHPSESSID=abc; security=low')" }
+        }
+      },
+      {
+        "name": "scan",
+        "description": "Run a single-phase scan (recon, vuln-scan, or exploit)",
+        "parameters": {
+          "target": { "type": "string", "description": "Target hostname or IP", "required": true },
+          "phase": { "type": "string", "enum": ["recon", "vuln-scan", "exploit"], "description": "Scan phase to run" },
+          "auth_header": { "type": "string", "description": "Auth header for authenticated scanning" },
+          "auth_cookie": { "type": "string", "description": "Cookie string for authenticated scanning" }
+        }
+      },
+      {
+        "name": "status",
+        "description": "Get status of a running or completed scan",
+        "parameters": {
+          "scan_id": { "type": "string", "description": "Scan ID returned by scan tool" }
+        }
+      },
+      {
+        "name": "findings",
+        "description": "List findings from a scan, filtered by severity",
+        "parameters": {
+          "scan_id": { "type": "string", "description": "Scan ID to get findings for" },
+          "severity": { "type": "string", "enum": ["critical", "high", "medium", "low", "all"], "default": "all" },
+          "limit": { "type": "integer", "default": 50 }
+        }
+      }
+    ]
+  }
+}

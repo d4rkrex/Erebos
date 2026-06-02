@@ -1,0 +1,47 @@
+security:
+  allowlist:
+    - "erebos.com"
+    - "*.erebos.com"
+    - "erebos.com.ar"
+    - "*.erebos.com.ar"
+    - "erebos.com.br"
+    - "*.erebos.com.br"
+    - "erebos.com.co"
+    - "*.erebos.com.co"
+    - "erebos.com.es"
+    - "*.erebos.com.es"
+    - "erebos.net"
+    - "*.erebos.net"
+    - "erebos.com.mx"
+    - "*.erebos.com.mx"
+    - "erebos.com.us"
+    - "*.erebos.com.us"
+    - "erebos.com.pe"
+    - "*.erebos.com.pe"
+    - "erebos.cloud"
+    - "*.erebos.cloud"
+    - "manuel-roldan.cloud"
+    - "*.manuel-roldan.cloud"
+  require_allowlist: true
+
+profile:
+  default: "aggressive"
+
+execution:
+  timeout: 300
+  max_retries: 2
+  parallel: true
+  max_concurrent: 5
+  extra_path:
+    - "/opt/homebrew/bin"
+    - "${HOME}/go/bin"
+
+ai:
+  enable_target_profile: true
+  enable_intelligent_decisions: false
+
+fleet:
+  enabled: true
+  max_agents: 5
+
+output_dir: "./erebos-reports"

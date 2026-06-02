@@ -1,0 +1,69 @@
+# VT-Spec ID-002: Docker ignore file
+# Prevents sensitive files from being included in Docker build context
+
+# Environment files (NEVER include in image)
+.env
+.env.*
+*.env
+
+# Git
+.git
+.gitignore
+
+# Python caches
+__pycache__
+*.py[cod]
+*.pyo
+*.pyd
+.eggs/
+*.egg-info/
+dist/
+build/
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+
+# IDE
+.vscode/
+.idea/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Test data
+tests/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# VT-Spec artifacts
+.vtspec/
+
+# Local storage (contains engagement data)
+vtstrike-storage/
+vtstrike-reports/
+
+# Scan results
+nmap/
+nikto_*.txt
+*.nmap
+*.gnmap
+
+# Large reference directories
+inspirations/
+
+# Documentation
+docs/
+*.md
+!README.md
+LICENSE
+
+# Development configs
+config.yaml
+!config.yaml.example
+docker-compose.yaml
+Dockerfile
+Dockerfile.mcp

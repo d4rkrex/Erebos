@@ -1,0 +1,88 @@
+# Erebos-Spec REQ-007: Hardened Docker container for Erebos SSE transport.
+#
+# Security mitigations:
+# - Erebos-Spec REQ-007: Non-root user (UID 1000), cap-drop ALL, read-only fs
+# - Erebos-Spec EOP-002: Minimal base image, no shell where possible
+# - Erebos-Spec EOP-002: /data mounted with noexec (via docker-compose)
+# - Erebos-Spec EOP-002: User namespace remapping support
+
+FROM python:3.10-slim AS builder
+
+WORKDIR /build
+
+# Install build dependencies
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+        gcc \
+        libffi-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy dependency files
+COPY pyproject.toml ./
+
+# Install Python dependencies
+RUN pip install --no-cache-dir --prefix=/install \
+    starlette>=0.37 \
+    uvicorn>=0.29 \
+    sse-starlette>=1.8 \
+    pydantic>=2.5.0 \
+    pydantic-settings>=2.1.0 \
+    pyyaml>=6.0.1 \
+    click>=8.1.7 \
+    httpx>=0.27.0
+
+# ── Production Stage ─────────────────────────────────────────────────
+
+FROM python:3.10-slim
+
+# Erebos-Spec REQ-007: Install pre-requisite pentest tools
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+        curl \
+        ca-certificates \
+    && rm -rf /var/lib/apt/lists/* \
+    && apt-get clean
+
+# Copy Python packages from builder
+COPY --from=builder /install /usr/local
+
+# Erebos-Spec REQ-007: Create non-root user (UID 1000)
+RUN groupadd -g 1000 erebos && \
+    useradd -u 1000 -g 1000 -m -s /usr/sbin/nologin erebos
+
+# Erebos-Spec ID-002: Create secrets mount point (read-only in production)
+RUN mkdir -p /run/secrets && chown erebos:erebos /run/secrets
+
+# Create data directory (the only writable volume)
+RUN mkdir -p /data && chown erebos:erebos /data
+
+# Copy application code
+WORKDIR /app
+COPY erebos/ ./erebos/
+COPY config.yaml.example ./config.yaml.example
+
+# Erebos-Spec REQ-007: Set ownership
+RUN chown -R erebos:erebos /app
+
+# Erebos-Spec REQ-007: Switch to non-root user
+USER erebos
+
+# Erebos-Spec REQ-007: Read-only filesystem — only /data is writable
+# (enforced via docker-compose read_only: true + tmpfs/volume mounts)
+
+# Expose SSE port (default 8443)
+EXPOSE 8443
+
+# Erebos-Spec REQ-007 / REQ-008: Health check
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+    CMD curl -sf http://127.0.0.1:8443/health || exit 1
+
+# Erebos-Spec EOP-002: No new privileges
+# (enforced via docker-compose security_opt: no-new-privileges)
+
+# Erebos-Spec DOS-001: Graceful shutdown — STOPSIGNAL ensures SIGTERM is sent
+STOPSIGNAL SIGTERM
+
+# Entry point — SSE transport server
+ENTRYPOINT ["python", "-m", "erebos.agents.mcp_sse"]
+CMD ["--host", "127.0.0.1", "--port", "8443"]

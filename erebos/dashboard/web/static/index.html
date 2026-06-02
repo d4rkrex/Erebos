@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Erebos Dashboard</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+</head>
+<body x-data="dashboard()" x-init="connect()">
+    <header>
+        <h1>🛡️ Erebos Dashboard</h1>
+        <div class="status-badge" :class="snapshot.is_active ? 'active' : 'idle'">
+            <span x-text="snapshot.is_active ? '● SCANNING' : '○ IDLE'"></span>
+        </div>
+        <div class="target" x-show="snapshot.target">
+            Target: <strong x-text="snapshot.target || '—'"></strong>
+        </div>
+    </header>
+
+    <main>
+        <!-- Progress Section -->
+        <section class="card progress-card">
+            <h2>Progress</h2>
+            <div class="progress-bar">
+                <div class="progress-fill" :style="`width: ${snapshot.progress.percentage}%`"></div>
+            </div>
+            <div class="progress-info">
+                <span x-text="`Phase: ${snapshot.progress.current_phase}`"></span>
+                <span x-text="`${snapshot.progress.percentage.toFixed(0)}%`"></span>
+            </div>
+        </section>
+
+        <!-- Severity Counts -->
+        <section class="card severity-card">
+            <h2>Findings</h2>
+            <div class="severity-grid">
+                <div class="severity-item critical">
+                    <span class="count" x-text="snapshot.severity_counts.critical"></span>
+                    <span class="label">Critical</span>
+                </div>
+                <div class="severity-item high">
+                    <span class="count" x-text="snapshot.severity_counts.high"></span>
+                    <span class="label">High</span>
+                </div>
+                <div class="severity-item medium">
+                    <span class="count" x-text="snapshot.severity_counts.medium"></span>
+                    <span class="label">Medium</span>
+                </div>
+                <div class="severity-item low">
+                    <span class="count" x-text="snapshot.severity_counts.low"></span>
+                    <span class="label">Low</span>
+                </div>
+                <div class="severity-item info">
+                    <span class="count" x-text="snapshot.severity_counts.info"></span>
+                    <span class="label">Info</span>
+                </div>
+            </div>
+            <div class="total">
+                Total: <strong x-text="snapshot.total_findings"></strong>
+            </div>
+        </section>
+
+        <!-- Agents -->
+        <section class="card agents-card">
+            <h2>Agents</h2>
+            <div class="agents-list">
+                <template x-for="agent in snapshot.agents" :key="agent.role">
+                    <div class="agent-row" :class="agent.state">
+                        <span class="agent-icon" x-text="agentIcon(agent.state)"></span>
+                        <span class="agent-role" x-text="agent.role"></span>
+                        <span class="agent-state" x-text="agent.state"></span>
+                        <span class="agent-findings" x-show="agent.findings_count > 0"
+                              x-text="`${agent.findings_count} findings`"></span>
+                    </div>
+                </template>
+                <div x-show="snapshot.agents.length === 0" class="no-data">No agents active</div>
+            </div>
+        </section>
+
+        <!-- Top Findings Table -->
+        <section class="card findings-card">
+            <h2>Top Findings</h2>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Severity</th>
+                        <th>Title</th>
+                        <th>Target</th>
+                        <th>CVE</th>
+                        <th>Tool</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <template x-for="f in snapshot.top_findings" :key="f.id">
+                        <tr :class="f.severity.toLowerCase()">
+                            <td><span class="badge" :class="f.severity.toLowerCase()" x-text="f.severity"></span></td>
+                            <td x-text="f.title"></td>
+                            <td x-text="f.target || '—'"></td>
+                            <td>
+                                <a x-show="f.cve" :href="`https://nvd.nist.gov/vuln/detail/${f.cve}`"
+                                   target="_blank" x-text="f.cve"></a>
+                                <span x-show="!f.cve">—</span>
+                            </td>
+                            <td x-text="f.tool"></td>
+                        </tr>
+                    </template>
+                    <tr x-show="snapshot.top_findings.length === 0">
+                        <td colspan="5" class="no-data">No findings yet</td>
+                    </tr>
+                </tbody>
+            </table>
+        </section>
+
+        <!-- Live Log -->
+        <section class="card log-card">
+            <h2>Live Activity</h2>
+            <div class="log-container" x-ref="logContainer">
+                <template x-for="(event, i) in events" :key="i">
+                    <div class="log-line">
+                        <span class="log-ts" x-text="formatTime(event.timestamp)"></span>
+                        <span class="log-msg" x-text="event.summary"></span>
+                    </div>
+                </template>
+                <div x-show="events.length === 0" class="no-data">Waiting for events...</div>
+            </div>
+        </section>
+    </main>
+
+    <footer>
+        <span>Erebos Dashboard • Last updated: <span x-text="formatTime(snapshot.last_updated)"></span></span>
+        <span class="connection-status" :class="connected ? 'connected' : 'disconnected'"
+              x-text="connected ? '● Connected' : '○ Disconnected'"></span>
+    </footer>
+
+    <script src="/static/app.js"></script>
+</body>
+</html>

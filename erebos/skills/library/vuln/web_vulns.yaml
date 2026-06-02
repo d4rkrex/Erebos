@@ -1,0 +1,20 @@
+name: web_vulns
+version: "1.0"
+description: "Web vulnerability scanning via nikto and nuclei"
+technique_id: T1595.002
+phase_applicable: [enumeration]
+triggers:
+  - observation_type: port_open
+    field_match:
+      service: http
+  - observation_type: service_detected
+    field_match:
+      service: http
+tools_required: [nikto]
+actions:
+  - tool: nikto
+    args_template: ["-h", "{target}", "-p", "{port}"]
+    description: "Nikto web vulnerability scan"
+  - tool: nuclei
+    args_template: ["-u", "http://{target}:{port}", "-severity", "medium,high,critical"]
+    description: "Nuclei template-based vulnerability scan"

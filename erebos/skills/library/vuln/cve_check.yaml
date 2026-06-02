@@ -1,0 +1,17 @@
+name: cve_check
+version: "1.0"
+description: "CVE-based vulnerability matching against detected services"
+technique_id: T1595.002
+phase_applicable: [enumeration]
+triggers:
+  - observation_type: service_detected
+    field_match: {}
+    regex_pattern: "\\d+\\.\\d+"
+tools_required: [nmap, searchsploit]
+actions:
+  - tool: nmap
+    args_template: ["-sV", "--script", "vulners", "-p", "{port}", "{target}"]
+    description: "Nmap vulners script for CVE detection"
+  - tool: searchsploit
+    args_template: ["{service}"]
+    description: "Search for known exploits by service name"

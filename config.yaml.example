@@ -1,0 +1,68 @@
+# Erebos Configuration Example
+# Copy to config.yaml and adjust values
+
+# Scan profiles
+profile:
+  default: "default"
+  tools:
+    nmap: true
+    nuclei: true
+    nikto: true
+    katana: true
+    subfinder: true
+    httpx: true
+    dnsx: true
+    naabu: true
+
+# Execution settings
+execution:
+  timeout: 300
+  max_retries: 2
+  parallel: true
+  max_concurrent: 5
+
+# Security settings
+security:
+  allowlist: []
+  require_allowlist: true
+
+# AI enhancement
+ai:
+  enable_target_profile: true
+  enable_intelligent_decisions: false
+
+# Exploitation engine
+exploitation:
+  enabled: true
+  dry_run: false
+  timeout: 30
+  llm_cascade:
+    - provider: "copilot"
+      model: "gpt-4o"
+      rate_limit: 10
+    - provider: "claude"
+      model: "claude-sonnet-4-20250514"
+      rate_limit: 10
+    - provider: "openrouter"
+      model: "anthropic/claude-sonnet-4-20250514"
+      rate_limit: 10
+
+# Fleet mode
+fleet:
+  enabled: false
+  max_agents: 5
+  roles:
+    - recon
+    - vuln-scan
+    - exploit
+    - reporter
+
+# SSE Transport (for MCP server mode)
+sse:
+  host: "127.0.0.1"
+  port: 8443
+  require_auth: true
+  max_connections: 10
+
+# Output
+output_dir: "./erebos-reports"
