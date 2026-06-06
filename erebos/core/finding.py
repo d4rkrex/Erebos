@@ -86,6 +86,13 @@ class Finding(BaseModel):
     timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     # Exploitation status tracking (shannon-pipeline-upgrade)
     exploitation_status: Optional[str] = None  # pending|exploited|potential|false_positive|skipped
+    # Validation pipeline results (raptor-validation-pipeline)
+    validation_stage: Optional[str] = None  # Last stage completed (A|B|C|D)
+    validation_confidence: Optional[float] = None  # 0.0-1.0 confidence from pipeline
+    validation_short_circuited: Optional[str] = None  # Stage that short-circuited (if FP)
+    # SAST correlation
+    correlated_sast: bool = False  # Whether DAST finding has SAST cross-validation
+    correlation_score: Optional[float] = None  # 0.0-1.0 DAST↔SAST correlation
 
     @field_validator("cvss")
     @classmethod

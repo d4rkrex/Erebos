@@ -251,7 +251,7 @@ class TestShellManagerSafety:
     def test_ps1_nonce_pattern_matches_valid(self):
         """VT-Spec T-02: Valid PS1 nonce matches."""
         nonce = str(uuid.uuid4())
-        line = f"[VTSTRIKE:{nonce}:0:/home/user]$"
+        line = f"[EREBOS:{nonce}:0:/home/user]$"
         match = PS1_NONCE_PATTERN.search(line)
         assert match is not None
         assert match.group(1) == nonce
@@ -259,7 +259,7 @@ class TestShellManagerSafety:
 
     def test_ps1_nonce_pattern_rejects_spoofed(self):
         """VT-Spec T-02: Spoofed nonce (wrong format) doesn't match."""
-        line = "[VTSTRIKE:not-a-uuid:0:/path]$"
+        line = "[EREBOS:not-a-uuid:0:/path]$"
         match = PS1_NONCE_PATTERN.search(line)
         assert match is None
 
@@ -326,7 +326,7 @@ class TestShellManagerExecution:
         """VT-Spec T-02: Nonce detection in output."""
         mgr = ShellManager()
         nonce = str(uuid.uuid4())
-        output = f"some output\n[VTSTRIKE:{nonce}:0:/home]$ \nmore"
+        output = f"some output\n[EREBOS:{nonce}:0:/home]$ \nmore"
         assert mgr._check_nonce_in_output(output, nonce) is True
         assert mgr._check_nonce_in_output(output, str(uuid.uuid4())) is False
 
@@ -334,7 +334,7 @@ class TestShellManagerExecution:
         """VT-Spec T-02: Exit code extracted correctly from nonce."""
         mgr = ShellManager()
         nonce = str(uuid.uuid4())
-        output = f"command output\n[VTSTRIKE:{nonce}:42:/home/user]$\n"
+        output = f"command output\n[EREBOS:{nonce}:42:/home/user]$\n"
         assert mgr._extract_exit_code(output, nonce) == 42
 
     def test_extract_exit_code_unknown_nonce(self):

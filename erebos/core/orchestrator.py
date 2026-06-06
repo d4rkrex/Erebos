@@ -1,17 +1,12 @@
 """Phase state machine orchestrator."""
 
 import logging
-import signal
 import threading
 from pathlib import Path
-from typing import Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 
 from erebos.core.finding import Finding, Phase, ScanMode
 from erebos.core.phase_agent import (
-    DiscoveryAgent,
-    ReportingAgent,
-    ValidationAgent,
-    VulnScanAgent,
     get_agent_for_phase,
 )
 from erebos.core.scan_profile import ScanProfile
@@ -230,6 +225,7 @@ class Orchestrator:
 
         # Execution state
         self.all_findings: List[Finding] = []
+        self._evidence_chains: List = []
         self.context: Dict = {}
 
         # Register with kill switch
@@ -420,6 +416,10 @@ class Orchestrator:
                 for finding in findings:
                     self.finding_store.add_finding(self.scan_id, finding)
 
+            # VT-Spec raptor-validation-pipeline: Auto-validate after vuln-scan
+            if phase == Phase.VULN_SCAN and findings:
+                self._run_validation_pipeline(findings)
+
             # Transition state
             self.state_machine.transition(phase)
             self._save_state()
@@ -440,9 +440,64 @@ class Orchestrator:
             logger.error(f"Error executing phase {phase}: {e}")
             return False
 
+    def _run_validation_pipeline(self, findings: List[Finding]) -> None:
+        """Run the validation pipeline on findings to filter false positives.
+
+        VT-Spec raptor-validation-pipeline: Automatically validates findings
+        after vuln-scan phase completes. Updates exploitation_status and
+        validation fields on each finding. Also builds evidence chains.
+        """
+        try:
+            from erebos.core.validation import ValidationPipeline
+
+            pipeline = ValidationPipeline()
+            results, stats = pipeline.validate_findings(findings)
+
+            # Update findings with validation results
+            for result in results:
+                finding = result.finding
+                finding.exploitation_status = result.exploitation_status
+                finding.validation_stage = (
+                    result.stage_results[-1].stage if result.stage_results else None
+                )
+                finding.validation_confidence = result.confidence
+                finding.validation_short_circuited = result.short_circuited_at
+
+            logger.info(
+                f"Validation pipeline: {stats.passed} validated, "
+                f"{stats.failed} FP filtered, {stats.uncertain} need review "
+                f"(FP rate: {stats.false_positive_rate:.1%})"
+            )
+
+            if self.on_progress:
+                self.on_progress(
+                    f"Validated: {stats.passed} confirmed, {stats.failed} FP filtered",
+                    100.0,
+                )
+
+        except Exception as e:
+            logger.warning(f"Validation pipeline error (non-fatal): {e}")
+
+        # Build evidence chains from all confirmed findings
+        try:
+            from erebos.core.chains import ChainBuilder
+
+            confirmed = [f for f in self.all_findings if f.exploitation_status == "potential"]
+            if len(confirmed) >= 2:
+                builder = ChainBuilder()
+                chains = builder.build_chains(confirmed)
+                if chains:
+                    self._evidence_chains = chains
+                    logger.info(
+                        f"Evidence chains: {len(chains)} attack chains identified "
+                        f"(longest: {max(c.length for c in chains)} steps)"
+                    )
+        except Exception as e:
+            logger.debug(f"Evidence chain building failed (non-fatal): {e}")
+
     def _build_phase_context(self, phase: Phase) -> Dict:
         """Build context dictionary for phase execution."""
-        context = {}
+        context: dict[str, Any] = {}
         settings = get_settings()
 
         # Add findings from previous phases

@@ -1,0 +1,128 @@
+rules:
+  - id: express-sqli-raw-query
+    message: SQL query with unsanitized request input - potential SQL injection
+    severity: ERROR
+    languages: [javascript, typescript]
+    metadata:
+      cwe: ["CWE-89: SQL Injection"]
+      owasp: ["A03:2021 - Injection"]
+    pattern-either:
+      - pattern: $DB.query("..." + $REQ.$SRC.$FIELD + "...", ...)
+      - pattern: $DB.query(`...${$REQ.$SRC.$FIELD}...`, ...)
+      - pattern: $DB.sequelize.query("..." + $REQ.$SRC.$FIELD + "...", ...)
+      - pattern: $DB.sequelize.query(`...${$REQ.$SRC.$FIELD}...`, ...)
+      - pattern: $KNEX.raw("..." + $REQ.$SRC.$FIELD + "...", ...)
+      - pattern: $KNEX.raw(`...${$REQ.$SRC.$FIELD}...`, ...)
+      - pattern: $KNEX.whereRaw("..." + $REQ.$SRC.$FIELD + "...", ...)
+      - pattern: $KNEX.whereRaw(`...${$REQ.$SRC.$FIELD}...`, ...)
+
+  - id: express-eval-user-input
+    message: eval() on request-controlled input can lead to code execution
+    severity: ERROR
+    languages: [javascript, typescript]
+    metadata:
+      cwe: ["CWE-94: Code Injection"]
+      owasp: ["A03:2021 - Injection"]
+    pattern-either:
+      - pattern: eval($REQ.$SRC.$FIELD)
+      - pattern: eval("..." + $REQ.$SRC.$FIELD)
+      - pattern: global.eval($REQ.$SRC.$FIELD)
+
+  - id: express-child-process-exec-user-input
+    message: child_process.exec with request data may allow command injection
+    severity: ERROR
+    languages: [javascript, typescript]
+    metadata:
+      cwe: ["CWE-78: OS Command Injection"]
+      owasp: ["A03:2021 - Injection"]
+    pattern-either:
+      - pattern: exec($REQ.$SRC.$FIELD, ...)
+      - pattern: exec("..." + $REQ.$SRC.$FIELD, ...)
+      - pattern: child_process.exec($REQ.$SRC.$FIELD, ...)
+      - pattern: child_process.exec("..." + $REQ.$SRC.$FIELD, ...)
+
+  - id: express-response-missing-security-headers
+    message: Response is sent without setting common security headers
+    severity: WARNING
+    languages: [javascript, typescript]
+    metadata:
+      cwe: ["CWE-693: Protection Mechanism Failure"]
+      owasp: ["A05:2021 - Security Misconfiguration"]
+    patterns:
+      - pattern-inside: |
+          $APP.$METHOD($ROUTE, ($REQ, $RES) => {
+            ...
+            $RES.$SEND(...);
+            ...
+          })
+      - pattern-either:
+          - pattern: $RES.send(...)
+          - pattern: $RES.json(...)
+          - pattern: $RES.end(...)
+          - pattern: $RES.redirect(...)
+      - pattern-not-inside: |
+          $APP.$METHOD($ROUTE, ($REQ, $RES) => {
+            ...
+            $RES.set("Content-Security-Policy", ...);
+            ...
+            $RES.$SEND(...);
+            ...
+          })
+      - pattern-not-inside: |
+          $APP.$METHOD($ROUTE, ($REQ, $RES) => {
+            ...
+            $RES.set("X-Frame-Options", ...);
+            ...
+            $RES.$SEND(...);
+            ...
+          })
+      - pattern-not-inside: |
+          $APP.$METHOD($ROUTE, ($REQ, $RES) => {
+            ...
+            $RES.set("X-Content-Type-Options", ...);
+            ...
+            $RES.$SEND(...);
+            ...
+          })
+      - pattern-not-inside: |
+          $APP.$METHOD($ROUTE, ($REQ, $RES) => {
+            ...
+            $RES.set("Strict-Transport-Security", ...);
+            ...
+            $RES.$SEND(...);
+            ...
+          })
+
+  - id: express-open-redirect
+    message: Redirect target comes from request data without validation
+    severity: WARNING
+    languages: [javascript, typescript]
+    metadata:
+      cwe: ["CWE-601: Open Redirect"]
+      owasp: ["A01:2021 - Broken Access Control"]
+    pattern-either:
+      - pattern: $RES.redirect($REQ.query.$URL)
+      - pattern: $RES.redirect($REQ.body.$URL)
+      - pattern: $RES.redirect($REQ.params.$URL)
+      - pattern: $RES.redirect("..." + $REQ.query.$URL)
+      - pattern: $RES.redirect(`...${$REQ.query.$URL}...`)
+
+  - id: express-jwt-decode-without-verify
+    message: JWT is decoded without signature verification
+    severity: WARNING
+    languages: [javascript, typescript]
+    metadata:
+      cwe: ["CWE-347: Improper Verification of Cryptographic Signature"]
+      owasp: ["A07:2021 - Identification and Authentication Failures"]
+    pattern-either:
+      - pattern: jwt.decode($TOKEN, ...)
+      - pattern: $JWT.decode($TOKEN, ...)
+
+  - id: express-hardcoded-secret
+    message: Hardcoded secret material in application code
+    severity: ERROR
+    languages: [javascript, typescript]
+    metadata:
+      cwe: ["CWE-798: Hardcoded Credentials"]
+      owasp: ["A02:2021 - Cryptographic Failures"]
+    pattern-regex: (?i)\b(const|let|var)\s+(jwt_secret|api_key|secret|client_secret|token|password)\b\s*=\s*["'][^"'\n]{4,}["']

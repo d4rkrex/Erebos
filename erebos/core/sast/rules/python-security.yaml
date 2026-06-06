@@ -1,0 +1,80 @@
+rules:
+  - id: python-command-injection-user-input
+    message: Command execution with untrusted input may lead to command injection
+    severity: ERROR
+    languages: [python]
+    metadata:
+      cwe: ["CWE-78: OS Command Injection"]
+      owasp: ["A03:2021 - Injection"]
+    pattern-either:
+      - pattern: os.system($REQUEST.args[$KEY])
+      - pattern: os.system($REQUEST.form[$KEY])
+      - pattern: os.system("..." + $REQUEST.args[$KEY])
+      - pattern: os.system("..." + input(...))
+      - pattern: subprocess.run($REQUEST.args[$KEY], shell=True, ...)
+      - pattern: subprocess.run("..." + $REQUEST.args[$KEY], shell=True, ...)
+      - pattern: subprocess.Popen($REQUEST.form[$KEY], shell=True, ...)
+      - pattern: subprocess.Popen("..." + input(...), shell=True, ...)
+
+  - id: python-pickle-loads-untrusted-data
+    message: pickle.loads on request data can lead to unsafe deserialization
+    severity: ERROR
+    languages: [python]
+    metadata:
+      cwe: ["CWE-502: Deserialization of Untrusted Data"]
+      owasp: ["A08:2021 - Software and Data Integrity Failures"]
+    pattern-either:
+      - pattern: pickle.loads(request.data)
+      - pattern: pickle.loads(request.get_data(...))
+      - pattern: pickle.loads(request.args[$KEY])
+      - pattern: pickle.loads(request.form[$KEY])
+
+  - id: python-sql-string-formatting
+    message: SQL built via string interpolation instead of parameters
+    severity: ERROR
+    languages: [python]
+    metadata:
+      cwe: ["CWE-89: SQL Injection"]
+      owasp: ["A03:2021 - Injection"]
+    pattern-either:
+      - pattern: $CURSOR.execute("..." % $DATA)
+      - pattern: $CURSOR.execute(f"...{$DATA}...")
+      - pattern: $CURSOR.execute("...{}...".format($DATA))
+      - pattern: $ENGINE.execute(f"...{$DATA}...")
+      - pattern: $ENGINE.execute("..." % $DATA)
+
+  - id: python-flask-debug-enabled
+    message: Flask debug mode should not be enabled in production
+    severity: WARNING
+    languages: [python]
+    metadata:
+      cwe: ["CWE-489: Active Debug Code"]
+      owasp: ["A05:2021 - Security Misconfiguration"]
+    pattern-either:
+      - pattern: $APP.run(..., debug=True, ...)
+      - pattern: $APP.debug = True
+      - pattern: FLASK_DEBUG = True
+
+  - id: python-jinja2-autoescape-disabled
+    message: Jinja2 environment created without autoescaping
+    severity: WARNING
+    languages: [python]
+    metadata:
+      cwe: ["CWE-79: Cross-site Scripting"]
+      owasp: ["A03:2021 - Injection"]
+    pattern-either:
+      - pattern: Environment(..., autoescape=False, ...)
+      - pattern: jinja2.Environment(..., autoescape=False, ...)
+
+  - id: python-yaml-load-unsafe
+    message: yaml.load without SafeLoader can deserialize unsafe objects
+    severity: ERROR
+    languages: [python]
+    metadata:
+      cwe: ["CWE-502: Deserialization of Untrusted Data"]
+      owasp: ["A08:2021 - Software and Data Integrity Failures"]
+    pattern-either:
+      - pattern: yaml.load($DATA)
+      - pattern: yaml.load($DATA, Loader=yaml.Loader)
+      - pattern: yaml.load($DATA, Loader=yaml.FullLoader)
+      - pattern: yaml.load($DATA, Loader=yaml.UnsafeLoader)

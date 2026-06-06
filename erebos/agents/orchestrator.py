@@ -36,6 +36,7 @@ class FleetConfig:
             AgentRole.RECON,
             AgentRole.VULN_SCAN,
             AgentRole.WEB_DISCOVERY,
+            AgentRole.API_PENTEST,  # llm-api-agent: auto-included in aggressive profile
             AgentRole.EXPLOIT,
             AgentRole.REPORTER,
         ],
@@ -165,11 +166,13 @@ class FleetOrchestrator:
         "recon": 600.0,
         "code-audit": 600.0,
         "exploit": 600.0,
+        "api-pentest": 600.0,  # llm-api-agent: 500 req cap × 200ms delay = ~100s + LLM time
     }
 
     PIPELINE_ORDER: List[AgentRole] = [
         AgentRole.WEB_DISCOVERY,
         AgentRole.VULN_SCAN,
+        AgentRole.API_PENTEST,  # llm-api-agent: runs after web-discovery (needs attack_surface)
         AgentRole.CODE_AUDIT,
         AgentRole.EXPLOIT,
         AgentRole.REPORTER,
@@ -332,9 +335,7 @@ class FleetOrchestrator:
                 )
                 if worker.findings_count > 0:
                     worker.status = AgentStatus.COMPLETED
-                    worker.errors.append(
-                        f"Timeout after {role_timeout}s (budget exhausted)"
-                    )
+                    worker.errors.append(f"Timeout after {role_timeout}s (budget exhausted)")
                     self._log_action(
                         "AGENT_COMPLETE",
                         f"{worker.id}: timeout but {worker.findings_count} findings produced",
@@ -396,6 +397,8 @@ class FleetOrchestrator:
             return await self._role_vuln_scan(worker)
         elif worker.role == AgentRole.WEB_DISCOVERY:
             return await self._role_web_discovery(worker)
+        elif worker.role == AgentRole.API_PENTEST:
+            return await self._role_api_pentest(worker)
         elif worker.role == AgentRole.EXPLOIT:
             return await self._role_exploit(worker)
         elif worker.role == AgentRole.CODE_AUDIT:
@@ -688,15 +691,17 @@ class FleetOrchestrator:
             payload = msg.payload
             cookies = payload.get("auth_cookies")
             token_type = payload.get("auth_token_type", "")
-            if cookies and isinstance(cookies, dict) and token_type.lower() in ("cookie", "session"):
+            if (
+                cookies
+                and isinstance(cookies, dict)
+                and token_type.lower() in ("cookie", "session")
+            ):
                 self._log_action(
                     "AUTH_AUTO_BUS",
                     f"Reusing auth from web-discovery: {list(cookies.keys())}",
                 )
                 auth_ctx = AuthContext(allowlist=self._config.allowlist)
-                auth_ctx.add_static(
-                    AuthCredential(auth_type=AuthType.COOKIE, cookies=cookies)
-                )
+                auth_ctx.add_static(AuthCredential(auth_type=AuthType.COOKIE, cookies=cookies))
                 return auth_ctx
 
         self._log_action("AUTH_AUTO_START", f"Attempting adaptive auto-auth for {base_url}")
@@ -1256,8 +1261,50 @@ class FleetOrchestrator:
 
         return None
 
+    async def _role_api_pentest(self, worker: AgentWorker) -> Dict[str, Any]:
+        """LLM-driven API pentest agent — OpenAPI spec discovery + IDOR + proxy bypass.
+
+        llm-api-agent: Reads openapi_spec from attack_surface bus message if already
+        discovered by web-discovery; otherwise probes well-known paths itself.
+        VT-Spec E-01: Sequential IDOR off by default; enabled by auth_context.aggressive.
+        """
+        from erebos.agents.roles.api_pentest import ApiPentestRole
+
+        # Extract pre-discovered OpenAPI spec from bus (published by web-discovery)
+        openapi_spec = None
+        for msg in self._bus.subscribe(message_types=["attack_surface"]):
+            spec = msg.payload.get("openapi_spec")
+            if spec and isinstance(spec, dict):
+                openapi_spec = spec
+                break
+
+        # VT-Spec E-01: Check if aggressive mode is set via auth_context
+        aggressive = False
+        if self._config.auth_context is not None:
+            aggressive = getattr(self._config.auth_context, "aggressive", False)
+
+        role = ApiPentestRole(
+            bus=self._bus,
+            agent_id=worker.id,
+            target=self._config.target,
+            allowlist=self._config.allowlist,
+            audit_log=Path("./erebos-storage/api-pentest-audit.jsonl"),
+            aggressive=aggressive,
+            llm_cascade=self._build_llm_cascade(),
+            openapi_spec=openapi_spec,
+            repos=self._config.repos or [],
+        )
+        result = await role.execute()
+        worker.findings_count = result.get("findings", 0)
+        return result
+
     async def _role_code_audit(self, worker: AgentWorker) -> Dict[str, Any]:
-        """Code audit agent — analyzes repos for vuln patterns."""
+        """Code audit agent — analyzes repos with SAST + OWASP patterns.
+
+        VT-Spec repo-owasp-audit R3: Publishes findings with owasp_category, cwe,
+        severity, file_path, line_number, snippet.
+        VT-Spec raptor-validation-pipeline: Uses SastScanner + validation pipeline.
+        """
         from erebos.exploits.repo_analyzer import RepoAnalyzer
 
         if not self._config.repos:
@@ -1271,27 +1318,73 @@ class FleetOrchestrator:
             )
             return {"role": "code-audit", "findings": 0, "status": "no_repos"}
 
-        analyzer = RepoAnalyzer(repo_paths=self._config.repos)
-        # Broad search for auth gaps and common vuln patterns
-        context_list = analyzer.analyze_for_finding(
-            keywords=["auth", "password", "token", "sql", "exec", "eval"]
-        )
         total_findings = 0
-        for ctx in context_list:
-            severity = "HIGH" if ctx.auth_required is False else "MEDIUM"
-            cwe = "CWE-306" if ctx.auth_required is False else "CWE-200"
+
+        # Phase 1: SAST scan with Semgrep (new)
+        try:
+            from erebos.core.sast import SastScanner
+            from erebos.core.validation import ValidationPipeline
+
+            scanner = SastScanner()
+            pipeline = ValidationPipeline()
+
+            for repo_path in self._config.repos:
+                sast_result = scanner.scan(repo_path)
+                if sast_result.findings:
+                    # Validate SAST findings
+                    sast_findings = scanner.scan_to_findings(repo_path)
+                    contexts = {}
+                    for i, sf in enumerate(sast_result.findings):
+                        if i < len(sast_findings):
+                            ctx = scanner.extract_source_context(sf)
+                            contexts[sast_findings[i].id] = ctx
+
+                    val_results, _ = pipeline.validate_findings(sast_findings, contexts)
+
+                    for result in val_results:
+                        if result.is_valid or result.needs_manual_review:
+                            f = result.finding
+                            self._bus.publish(
+                                AgentMessage(
+                                    id=f"{worker.id}-sast-{total_findings}",
+                                    role=AgentRole.CODE_AUDIT,
+                                    message_type="finding",
+                                    payload={
+                                        "title": f.title,
+                                        "target": f.target,
+                                        "severity": f.severity,
+                                        "cwe": f.cwe,
+                                        "source": "semgrep",
+                                        "validated": result.is_valid,
+                                        "confidence": result.confidence,
+                                    },
+                                )
+                            )
+                            total_findings += 1
+        except Exception as e:
+            logger.warning(f"SAST scan failed (falling back to OWASP): {e}")
+
+        # Phase 2: OWASP pattern analysis (existing)
+        analyzer = RepoAnalyzer(repo_paths=self._config.repos)
+        owasp_findings = analyzer.scan_owasp()
+        for finding in owasp_findings:
             self._bus.publish(
                 AgentMessage(
                     id=f"{worker.id}-code-{total_findings}",
                     role=AgentRole.CODE_AUDIT,
                     message_type="finding",
                     payload={
-                        "title": f"Code pattern: {ctx.route or ctx.file_path}",
-                        "target": ctx.route or str(ctx.file_path),
-                        "severity": severity,
-                        "cwe": cwe,
-                        "file_path": str(ctx.file_path),
-                        "auth_required": ctx.auth_required,
+                        "title": f"[{finding.owasp_category}/{finding.cwe}] {finding.title}",
+                        "target": finding.file_path,
+                        "severity": finding.severity,
+                        "cwe": finding.cwe,
+                        "owasp_category": finding.owasp_category,
+                        "owasp_name": finding.owasp_name,
+                        "file_path": finding.file_path,
+                        "line_number": finding.line_number,
+                        "snippet": finding.snippet,
+                        "language": finding.language,
+                        "tags": finding.tags,
                     },
                 )
             )
@@ -1313,6 +1406,40 @@ class FleetOrchestrator:
         correlated = correlation.correlate()
         correlation.publish_results(correlated)
 
+        # Build evidence chains from correlated findings
+        evidence_chains = []
+        try:
+            from erebos.core.chains import ChainBuilder
+            from erebos.core.finding import Finding
+
+            # Convert correlated results to Findings for chain builder
+            chain_findings = []
+            for cr in correlated:
+                try:
+                    f = Finding(
+                        title=cr.title,
+                        severity=cr.severity,
+                        target=cr.target,
+                        tool=cr.source_tool or "fleet",
+                        cwe=cr.cwe,
+                        description=cr.title,
+                        phase_found="vuln-scan",
+                    )
+                    chain_findings.append(f)
+                except Exception:
+                    continue
+
+            if len(chain_findings) >= 2:
+                builder = ChainBuilder()
+                evidence_chains = builder.build_chains(chain_findings)
+                if evidence_chains:
+                    logger.info(
+                        f"Evidence chains: {len(evidence_chains)} attack chains "
+                        f"(longest: {max(c.length for c in evidence_chains)} steps)"
+                    )
+        except Exception as e:
+            logger.debug(f"Evidence chain building failed: {e}")
+
         # Compute fleet metadata for report header
         other_workers = [w for w in self._workers if w.role != AgentRole.REPORTER]
         fleet_start = min((w.started_at for w in other_workers if w.started_at), default=None)
@@ -1325,6 +1452,7 @@ class FleetOrchestrator:
             "duration_ms": duration_ms,
             "agents_completed": sum(1 for w in other_workers if w.status == AgentStatus.COMPLETED),
             "agents_failed": sum(1 for w in other_workers if w.status == AgentStatus.FAILED),
+            "evidence_chains": [c.to_dict() for c in evidence_chains],
         }
 
         # Generate report with correlation data
@@ -1341,6 +1469,7 @@ class FleetOrchestrator:
         )
         result = await role.execute(correlated=correlated)
         result["correlated_findings"] = len(correlated)
+        result["evidence_chains"] = len(evidence_chains)
         result["top_priority"] = correlated[0].priority_score if correlated else 0
         worker.findings_count = result.get("total_findings", 0)
         return result
@@ -1619,12 +1748,12 @@ class FleetOrchestrator:
 
         # Known coding agent environment markers
         agent_markers = [
-            "COPILOT_CLI",           # GitHub Copilot CLI
+            "COPILOT_CLI",  # GitHub Copilot CLI
             "COPILOT_AGENT_SESSION_ID",  # Copilot agent session
-            "CLAUDE_CODE",           # Claude Code
-            "CURSOR_SESSION_ID",     # Cursor IDE agent
-            "AIDER_SESSION",         # Aider
-            "CLINE_SESSION",         # Cline
+            "CLAUDE_CODE",  # Claude Code
+            "CURSOR_SESSION_ID",  # Cursor IDE agent
+            "AIDER_SESSION",  # Aider
+            "CLINE_SESSION",  # Cline
         ]
         return any(os.environ.get(var) for var in agent_markers)
 

@@ -1,0 +1,27 @@
+rules:
+  - id: generic-hardcoded-secret
+    message: Hardcoded password, token, or secret found in source
+    severity: ERROR
+    languages: [generic]
+    metadata:
+      cwe: ["CWE-798: Hardcoded Credentials"]
+      owasp: ["A02:2021 - Cryptographic Failures"]
+    pattern-regex: (?i)\b(password|passwd|pwd|secret|token|api[_-]?key|access[_-]?key)\b\s*[:=]\s*["'][^"'\n]{4,}["']
+
+  - id: generic-sensitive-debug-logging
+    message: Debug or verbose logging appears to expose sensitive data
+    severity: WARNING
+    languages: [generic]
+    metadata:
+      cwe: ["CWE-532: Insertion of Sensitive Information into Log File"]
+      owasp: ["A09:2021 - Security Logging and Monitoring Failures"]
+    pattern-regex: (?i)\b(log|logger\.(debug|info)|console\.log|print|trace)\b[^\n]*(password|secret|token|authorization|cookie|session|jwt)
+
+  - id: generic-security-todo
+    message: Security-related TODO/FIXME indicates known unresolved security debt
+    severity: INFO
+    languages: [generic]
+    metadata:
+      cwe: ["CWE-1104: Use of Unmaintained Third Party Components"]
+      owasp: ["A06:2021 - Vulnerable and Outdated Components"]
+    pattern-regex: (?i)(TODO|FIXME|HACK|XXX)[^\n]*(security|auth|sanitize|escape|validate|csrf|xss|sqli|sql injection|injection)
